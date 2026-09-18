@@ -2,12 +2,12 @@
   "name": "veilpass",
   "version": "1.0.0",
   "type": "module",
-  "description": "A Midnight Network application created with create-mn-app",
+  "description": "VeilPass \u2014 Age / Eligibility Gate on Midnight Network",
   "author": "",
   "license": "MIT",
   "scripts": {
-    "compile": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
-    "build": "npx tsc --noEmit || true",
+    "compile": "compact compile contracts/veilpass.compact contracts/managed/veilpass",
+    "build": "npx tsc --noEmit",
     "setup": "npx tsx src/setup.ts",
     "deploy": "npx tsx src/deploy.ts",
     "cli": "npx tsx src/cli.ts",
@@ -16,8 +16,8 @@
     "proof-server:start": "docker compose up -d",
     "proof-server:stop": "docker compose down",
     "clean": "node scripts/clean.mjs",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:e2e": "tsx scripts/e2e-check.ts"
+    "test": "npx tsx scripts/test.ts",
+    "test:e2e": "npx tsx scripts/e2e-check.ts"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
@@ -48,7 +48,8 @@
     "midnight",
     "blockchain",
     "zero-knowledge",
-    "privacy"
+    "privacy",
+    "age-gate"
   ],
   "overrides": {
     "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"

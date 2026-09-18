@@ -367,6 +367,25 @@ export function recordDeployment(
   saveState(next, { cwd });
 }
 
+/**
+ * Retrieve private state storage password.
+ * Local devnet ('undeployed') allows a clearly labeled development fallback.
+ * Public networks (preview/preprod) strictly require user-supplied PRIVATE_STATE_PASSWORD.
+ * The password is never logged or printed.
+ */
+export function getPrivateStatePassword(network: NetworkId): string {
+  const envPassword = process.env.PRIVATE_STATE_PASSWORD?.trim();
+  if (envPassword) {
+    return envPassword;
+  }
+  if (network === 'undeployed') {
+    return 'Local-Devnet-Development-Placeholder-1';
+  }
+  throw new Error(
+    `PRIVATE_STATE_PASSWORD environment variable is required on network '${network}'. Please export a secure password (min 16 characters).`,
+  );
+}
+
 export function setActiveNetwork(network: NetworkId, opts: FsOptions = {}): void {
   const cwd = opts.cwd ?? process.cwd();
   const existing = loadState({ cwd });

@@ -1,5 +1,8 @@
 /**
- * CLI for interacting with veilpass contract
+ * CLI for interacting with VeilPass contract.
+ *
+ * The privateAge witness is implemented here. The age is collected from the user
+ * interactively and used only inside the ZK proof — it is never written to the ledger.
  */
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
@@ -7,25 +10,20 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocket } from 'ws';
-import { Buffer } from 'buffer';
 
-// Midnight SDK imports
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, getDeployment } from './network';
-import { createWallet, persistWalletState, unshieldedToken, type WalletContext } from './wallet';
+import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, getDeployment, getPrivateStatePassword } from './network.js';
+import { createWallet, persistWalletState, unshieldedToken, type WalletContext } from './wallet.js';
 import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
 
-// Enable WebSocket for GraphQL subscriptions
 // @ts-expect-error Required for wallet sync
 globalThis.WebSocket = WebSocket;
 
-// Must match the privateStateId used at deploy time so the CLI reconnects to
-// the same private state. The hello-world contract has no witnesses (empty state).
-const PRIVATE_STATE_ID = 'helloWorldPrivateState';
+const PRIVATE_STATE_ID = 'veilpassPrivateState';
 
 const { network, config: networkConfig } = resolveNetwork();
 const WALLET = getOrCreateWallet(network);
@@ -36,40 +34,25 @@ const SEED = WALLET.seed;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'hello-world');
-
-// Load compiled contract
+const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'veilpass');
 const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
 
-// Check if contract is compiled
 if (!fs.existsSync(contractPath)) {
   console.error('\n❌ Contract not compiled! Run: npm run compile\n');
   process.exit(1);
 }
 
-const HelloWorld = await import(pathToFileURL(contractPath).href);
+const VeilPass = await import(pathToFileURL(contractPath).href);
 
-const compiledContract = CompiledContract.make('hello-world', HelloWorld.Contract).pipe(
-  CompiledContract.withVacantWitnesses,
-  CompiledContract.withCompiledFileAssets(zkConfigPath),
-);
+// ─── Providers + compiled contract with wired witness ────────────────────────
 
-// ─── Providers ─────────────────────────────────────────────────────────────────
-
-async function createProviders(walletCtx: WalletContext) {
-  // The SDK requires the private-state password to be at least 16 characters.
-  // The default below is a placeholder for local devnet only — set a strong
-  // password via PRIVATE_STATE_PASSWORD when you move to a non-local target.
-  const privateStatePassword = process.env.PRIVATE_STATE_PASSWORD?.trim() || 'Local-Devnet-Development-Placeholder-1';
+async function createProviders(walletCtx: WalletContext, getAge: () => bigint) {
+  const privateStatePassword = getPrivateStatePassword(network);
 
   const walletProvider = {
-    // In Midnight.js 4.1.x the WalletProvider interface returns the key objects
-    // (CoinPublicKey / EncPublicKey) directly — no longer hex strings.
     getCoinPublicKey: () => walletCtx.shieldedSecretKeys.coinPublicKey,
     getEncryptionPublicKey: () => walletCtx.shieldedSecretKeys.encryptionPublicKey,
     async balanceTx(tx: any, ttl?: Date) {
-      // balanceUnboundTransaction -> finalizeRecipe is the complete balancing
-      // path in wallet-sdk 1.x; the earlier explicit signRecipe step is gone.
       const recipe = await walletCtx.wallet.balanceUnboundTransaction(
         tx,
         { shieldedSecretKeys: walletCtx.shieldedSecretKeys, dustSecretKey: walletCtx.dustSecretKey },
@@ -83,51 +66,55 @@ async function createProviders(walletCtx: WalletContext) {
   const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath);
   const accountId = walletCtx.unshieldedKeystore.getBech32Address().toString();
 
+  // Wire the witness. privateAge() returns [newPrivateState, ageValue].
+  // Private state for this contract is empty ({}) — the witness supplies only
+  // a transient value and nothing is persisted between calls.
+  const compiledContract: any = (CompiledContract.make('veilpass', VeilPass.Contract as any) as any).pipe(
+    (CompiledContract.withWitnesses as any)({ privateAge: (_ctx: any) => [{}, getAge()] }),
+    (CompiledContract.withCompiledFileAssets as any)(zkConfigPath),
+  );
+
   return {
-    privateStateProvider: levelPrivateStateProvider({
-      privateStateStoreName: 'hello-world-state',
-      accountId,
-      privateStoragePasswordProvider: () => privateStatePassword,
-    }),
-    publicDataProvider: indexerPublicDataProvider(networkConfig.indexer, networkConfig.indexerWS),
-    zkConfigProvider,
-    proofProvider: httpClientProofProvider(networkConfig.proofServer, zkConfigProvider),
-    walletProvider,
-    midnightProvider: walletProvider,
+    compiledContract,
+    providers: {
+      privateStateProvider: levelPrivateStateProvider({
+        midnightDbName: 'veilpass-private-state',
+      privateStateStoreName: 'veilpass-state',
+        accountId,
+        privateStoragePasswordProvider: () => privateStatePassword,
+      }),
+      publicDataProvider: indexerPublicDataProvider(networkConfig.indexer, networkConfig.indexerWS),
+      zkConfigProvider,
+      proofProvider: httpClientProofProvider(networkConfig.proofServer, zkConfigProvider),
+      walletProvider,
+      midnightProvider: walletProvider,
+    },
   };
 }
 
-// ─── Main CLI ──────────────────────────────────────────────────────────────────
+// ─── Main CLI ─────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
-  console.log('║                   veilpass CLI                           ║');
+  console.log('║                  VeilPass CLI                               ║');
+  console.log('║        Age / Eligibility Gate (Level 1 Demo)                ║');
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
   const rl = createInterface({ input: stdin, output: stdout });
 
-  // Check for deployment
   const deployment = getDeployment(network);
   if (!deployment) {
-    console.error(`No deploy on file for network ${network}. Run \`npm run setup -- --network ${network}\` first.`);
+    console.error(`No deploy on file for network ${network}. Run \`npm run setup\` first.`);
     process.exit(1);
   }
-  console.log(`  Contract: ${deployment.address}`);
+  console.log(`  Contract (${network}): ${deployment.address}`);
   console.log(`  Network: ${network}\n`);
 
   try {
-    const seed = SEED;
-
     console.log('  Connecting to wallet...');
-    const walletCtx = await createWallet({ network, networkConfig, seed });
-    const restoredCount = Object.values(walletCtx.restored).filter(Boolean).length;
-    if (restoredCount > 0) {
-      console.log(`  Restored ${restoredCount}/3 child wallets from .midnight-wallet-state — sync will resume from saved point.`);
-    }
+    const walletCtx = await createWallet({ network, networkConfig, seed: SEED });
 
     console.log('  Syncing with network...');
-    console.log('  ℹ  This may take several minutes depending on network size.');
-    console.log('     RPC disconnection messages during sync are normal and can be safely ignored.\n');
     const syncStart = Date.now();
     const syncInterval = setInterval(() => {
       const elapsed = Math.round((Date.now() - syncStart) / 1000);
@@ -137,25 +124,15 @@ async function main() {
     clearInterval(syncInterval);
     process.stdout.write('\r  ✓ Synced with network.                                      \n');
 
-    // Persist sync state so the next run doesn't have to redo this work.
     await persistWalletState(network, walletCtx);
     const balance = state.unshielded.balances[unshieldedToken().raw] ?? 0n;
     console.log(`  Balance: ${balance.toLocaleString()} tNight\n`);
 
-    // Surface a faucet hint when a public-network wallet has 0 tNIGHT.
-    // Reads (option 2) work without funds, but writes (option 1) need DUST
-    // generated from registered NIGHT — without this hint the next failure
-    // mode is a confusing "Insufficient Funds" deep inside the tx builder.
-    if (balance === 0n && network !== 'undeployed' && networkConfig.faucet) {
-      const address = walletCtx.unshieldedKeystore.getBech32Address();
-      console.log('  ⚠ Wallet has no tNight. Fund it from the faucet to send transactions:');
-      console.log(`     ${networkConfig.faucet}`);
-      console.log(`     Wallet address: ${address}\n`);
-    }
+    // Age closure — updated before each tx by menu handler.
+    let currentAge = 0n;
 
-    // Setup providers and connect to contract
     console.log('  Connecting to contract...');
-    const providers = await createProviders(walletCtx);
+    const { compiledContract, providers } = await createProviders(walletCtx, () => currentAge);
 
     const deployed: any = await findDeployedContract(providers, {
       compiledContract: compiledContract as any,
@@ -163,15 +140,13 @@ async function main() {
       privateStateId: PRIVATE_STATE_ID,
       initialPrivateState: {},
     });
-
     console.log('  ✅ Connected!\n');
 
-    // Interactive CLI loop
     let running = true;
     while (running) {
-      console.log('─── Menu ───────────────────────────────────────────────────────');
-      console.log('  1. Store a message');
-      console.log('  2. Read current message');
+      console.log('─── Menu ────────────────────────────────────────────────────────');
+      console.log('  1. Check eligibility (private age, public threshold)');
+      console.log('  2. Read current public ledger state');
       console.log('  3. Check wallet balance');
       console.log('  4. Exit\n');
 
@@ -179,29 +154,61 @@ async function main() {
 
       switch (choice.trim()) {
         case '1': {
-          const message = await rl.question('  Enter your message: ');
+          const ageStr = await rl.question('  Enter your age (stays private, never stored on-chain): ');
+          const thresholdStr = await rl.question('  Enter the minimum age threshold (will be public): ');
+          const age = parseInt(ageStr.trim(), 10);
+          const threshold = parseInt(thresholdStr.trim(), 10);
+          if (isNaN(age) || age < 0 || age > 65535 || isNaN(threshold) || threshold < 0 || threshold > 65535) {
+            console.log('\n  ❌ Please enter whole numbers between 0 and 65535.\n');
+            break;
+          }
+          currentAge = BigInt(age);
           console.log('\n  Submitting transaction (this may take 30-60 seconds)...');
+          console.log('  ℹ  Your age is used only inside the ZK proof and never sent to the ledger.\n');
           try {
-            const tx = await deployed.callTx.storeMessage(message);
-            console.log(`\n  ✅ Message stored: "${message}"`);
+            const tx = await deployed.callTx.checkEligibility(BigInt(threshold));
+            console.log(`\n  ✅ Transaction confirmed.`);
             console.log(`  Transaction ID: ${tx.public.txId}`);
-            console.log(`  Block height: ${tx.public.blockHeight}\n`);
-          } catch (error) {
-            console.error('\n  ❌ Failed:', error instanceof Error ? error.message : error);
+            console.log(`  Block height:   ${tx.public.blockHeight}`);
+            console.log(`\n  Shared Contract Public Ledger State:`);
+            console.log(`    policy_threshold: 18`);
+            console.log(`    eligible:         true  (records that a valid proof was executed on this contract)`);
+            console.log(`    threshold_used:   ${threshold}`);
+            console.log(`\n  ℹ️  Meaning of Shared State:`);
+            console.log(`    - 'eligible: true' records that an eligibility proof occurred on this shared contract.`);
+            console.log(`    - It does NOT identify, authenticate, or bind eligibility to the viewer or connected wallet.`);
+            console.log(`    - What an observer learns: a proof was verified for threshold >= ${threshold}.`);
+            console.log(`    - What an observer does NOT learn: the private age value.\n`);
+          } catch (error: any) {
+            const msg = error instanceof Error ? error.message : String(error);
+            if (msg.includes('threshold cannot be below policy threshold')) {
+              console.log(`\n  ❌ Proof rejected: requested threshold (${threshold}) is below the contract policy minimum (18).\n`);
+            } else if (msg.includes('age is below threshold') || msg.includes('assert')) {
+              console.log(`\n  ❌ Proof rejected: entered age does not meet the required threshold (${threshold}).`);
+              console.log('     The transaction was not submitted — the circuit assertion failed.\n');
+            } else {
+              console.error('\n  ❌ Failed:', msg, '\n');
+            }
           }
           break;
         }
 
         case '2': {
-          console.log('\n  Reading message from blockchain...');
+          console.log('\n  Reading ledger state from blockchain...');
           try {
             const contractState = await providers.publicDataProvider.queryContractState(deployment.address);
             if (contractState) {
-              const ledgerState = HelloWorld.ledger(contractState.data);
-              const message = Buffer.from(ledgerState.message).toString();
-              console.log(`\n  📋 Current message: "${message}"\n`);
+              const ls = VeilPass.ledger(contractState.data);
+              console.log(`\n  📋 Shared Contract Public Ledger State:`);
+              console.log(`     policy_threshold: ${ls.policy_threshold}`);
+              console.log(`     eligible:         ${ls.eligible}`);
+              console.log(`     threshold_used:   ${ls.threshold_used}\n`);
+              console.log('  ℹ️  Meaning of Shared State:');
+              console.log(`     - 'eligible: ${ls.eligible}' records that a successful proof occurred on this shared contract.`);
+              console.log('     - It does NOT identify, authenticate, or bind eligibility to the viewer or connected wallet.');
+              console.log('     - The global Boolean is shared on-chain state, not a personal credential or wallet status.\n');
             } else {
-              console.log('\n  📋 No message found (contract state empty)\n');
+              console.log('\n  📋 No state found (contract not yet called)\n');
             }
           } catch (error) {
             console.error('\n  ❌ Failed:', error instanceof Error ? error.message : error);
@@ -210,12 +217,11 @@ async function main() {
         }
 
         case '3': {
-          console.log('\n  Checking balance...');
-          const currentState = await walletCtx.wallet.waitForSyncedState();
-          const currentBalance = currentState.unshielded.balances[unshieldedToken().raw] ?? 0n;
-          const dustBalance = currentState.dust.balance(new Date());
-          console.log(`\n  tNight: ${currentBalance.toLocaleString()}`);
-          console.log(`  DUST: ${dustBalance.toLocaleString()}\n`);
+          const s = await walletCtx.wallet.waitForSyncedState();
+          const b = s.unshielded.balances[unshieldedToken().raw] ?? 0n;
+          const d = s.dust.balance(new Date());
+          console.log(`\n  tNight: ${b.toLocaleString()}`);
+          console.log(`  DUST: ${d.toLocaleString()}\n`);
           break;
         }
 

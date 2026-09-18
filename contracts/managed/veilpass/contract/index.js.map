@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "file": "index.js",
+  "sourceRoot": "../../../../",
+  "sources": ["contracts/veilpass.compact"],
+  "names": [],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAqCA;;;;;;;;;;;;;MAIA,AAAA,gBAOC;;;;;cAP+B,WAAmB;;;;;;;;;;;;;;;;;;yCAAnB,WAAmB;;;;;;;;;kDAAnB,WAAmB;;;OAOlD;;;;;;GATA;EAFD;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IANA;;;;;;;;;yEAAyC;IACzC;;;;;;;;;yEAAgC;IAChC;;;;;;;;;yEAAuC;UAKrC,KAAgB;IAAhB;;;;;;;2HAAA,KAAgB;;yEAAA;;;;;;;GACjB;EAJD,AAAA,aAA+B;;0DAA/B,UAA+B;;;;;;;;;;;;;;GAAA;EAM/B,AAAA,mBAOC,4BAP+B,WAAmB;4BAC1C,WAAS;;oDAAI;;;;;;;;;;;yHAAgB;;UAC9B,KAA4B;UAC5B,YAAwC,GAAjB,KAAG,IAAI,WAAS;4BACtC,YAAU;IACjB;;;;;;;2HAAoB,YAAU;;yEAAtB;IACR;;;;;;;2HAA0B,WAAS;;yEAArB;;GACf;;;;;;;;;;;;;;;;IAjBD;qCAAA;;;;;;;;;;;0GAAyC;KAAA;IACzC;qCAAA;;;;;;;;;;;0GAAgC;KAAA;IAChC;qCAAA;;;;;;;;;;;0GAAuC;KAAA;;;;;;;;;;"
+}

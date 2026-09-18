@@ -1,8 +1,9 @@
 /**
- * End-to-end smoke check for veilpass.
+ * End-to-end smoke check for VeilPass.
  *
- * Reconnects to the deployed contract, reads its ledger state, and exits 0
- * on success. Used by `npm run test:e2e` and by the project's CI workflows.
+ * Reconnects to the deployed contract and reads its ledger state.
+ * Exits 0 on success, non-zero on any error. All errors are surfaced —
+ * no swallowed failures.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -14,17 +15,24 @@ import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, getDeployment } from '../src/network';
-import { createWallet, persistWalletState } from '../src/wallet';
+import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, getDeployment, getPrivateStatePassword } from '../src/network.js';
+import { createWallet, persistWalletState } from '../src/wallet.js';
 import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
+
+// Catch any unhandled rejection or background fiber error so it never silently prints while reporting success
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ e2e-check failed due to unhandled rejection:', reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('❌ e2e-check failed due to uncaught exception:', err);
+  process.exit(1);
+});
 
 // @ts-expect-error wallet sync requires WebSocket
 globalThis.WebSocket = WebSocket;
 
-// Must match the privateStateId used at deploy time (witness-free → empty state).
-const PRIVATE_STATE_ID = 'helloWorldPrivateState';
-
-// ─── Network configuration ─────────────────────────────────────────────────────
+const PRIVATE_STATE_ID = 'veilpassPrivateState';
 
 const { network, config: networkConfig } = resolveNetwork();
 const WALLET = getOrCreateWallet(network);
@@ -46,51 +54,54 @@ function isHexAddress(s: unknown): s is string {
 async function main() {
   // 1. Deployment sanity
   const deployment = getDeployment(network);
-  if (!deployment) {
-    console.error(`No deploy on file for network ${network}.`);
-    process.exit(1);
-  }
-  if (!isHexAddress(deployment.address)) {
+  if (!deployment) fail(`No deploy on file for network ${network}.`);
+  if (!isHexAddress(deployment!.address)) {
     fail(`Deployment address missing or invalid: ${JSON.stringify(deployment, null, 2)}`);
   }
 
-  // 2. Build wallet and providers
+  // 2. Load compiled contract
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'hello-world');
+  const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'veilpass');
   const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
   if (!fs.existsSync(contractPath)) fail('Compiled contract missing — run `npm run compile`.');
-  const HelloWorld = await import(pathToFileURL(contractPath).href);
-  const compiledContract = CompiledContract.make('hello-world', HelloWorld.Contract).pipe(
-    CompiledContract.withVacantWitnesses,
-    CompiledContract.withCompiledFileAssets(zkConfigPath),
+
+  const VeilPass = await import(pathToFileURL(contractPath).href);
+
+  // Witnesses for contract instance construction (read-only check).
+  const compiledContract: any = (CompiledContract.make('veilpass', VeilPass.Contract as any) as any).pipe(
+    (CompiledContract.withWitnesses as any)({
+      privateAge: (_ctx: any) => [{}, 0n],
+    }),
+    (CompiledContract.withCompiledFileAssets as any)(zkConfigPath),
   );
 
+  // 3. Build wallet and sync
   const walletCtx = await createWallet({ network, networkConfig, seed: SEED });
-  await walletCtx.wallet.waitForSyncedState();
-  // Persist the sync state — saves time on the next e2e-check invocation in CI
-  // when run against the same persistent wallet directory.
+
+  try {
+    await walletCtx.wallet.waitForSyncedState();
+  } catch (err: any) {
+    await walletCtx.wallet.stop().catch(() => {});
+    fail(`Wallet sync failed: ${err instanceof Error ? err.message : err}`);
+  }
+
   await persistWalletState(network, walletCtx);
 
+  // 4. Build providers
   const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath);
   const walletProvider = {
-    // Midnight.js 4.1.x returns the key objects (CoinPublicKey / EncPublicKey).
     getCoinPublicKey: () => walletCtx.shieldedSecretKeys.coinPublicKey,
     getEncryptionPublicKey: () => walletCtx.shieldedSecretKeys.encryptionPublicKey,
-    async balanceTx() {
-      throw new Error('e2e-check is read-only and should not balance transactions');
-    },
-    submitTx() {
-      throw new Error('e2e-check is read-only and should not submit transactions');
-    },
+    async balanceTx() { throw new Error('e2e-check is read-only — no tx balancing'); },
+    submitTx() { throw new Error('e2e-check is read-only — no tx submission'); },
   } as any;
 
   const providers = {
     privateStateProvider: levelPrivateStateProvider({
-      privateStateStoreName: 'hello-world-state',
+      midnightDbName: 'veilpass-private-state',
+      privateStateStoreName: 'veilpass-state',
       accountId: walletCtx.unshieldedKeystore.getBech32Address().toString(),
-      // SDK requires ≥16 chars. e2e-check is read-only so we don't expose
-      // the env-var override here — match the deploy script's local-devnet default.
-      privateStoragePasswordProvider: () => 'Local-Devnet-Development-Placeholder-1',
+      privateStoragePasswordProvider: () => getPrivateStatePassword(network),
     }),
     publicDataProvider: indexerPublicDataProvider(networkConfig.indexer, networkConfig.indexerWS),
     zkConfigProvider,
@@ -99,37 +110,46 @@ async function main() {
     midnightProvider: walletProvider,
   };
 
-  // 3. Reconnect to the deployed contract — proves callTx interface is wired
+  // 5. Reconnect to deployed contract (proves address + verifier keys are valid)
   try {
     await findDeployedContract(providers, {
-      contractAddress: deployment.address,
+      contractAddress: deployment!.address,
       compiledContract: compiledContract as any,
       privateStateId: PRIVATE_STATE_ID,
       initialPrivateState: {},
     });
   } catch (err: any) {
-    await walletCtx.wallet.stop();
+    await walletCtx.wallet.stop().catch(() => {});
     fail(`findDeployedContract threw: ${err?.message ?? err}`);
   }
 
-  // 4. Read the on-chain contract state via the public data provider — proves
-  // the contract is indexed and queryable on the chain itself, not just that
-  // we know how to construct the local handle.
-  const onChainState = await providers.publicDataProvider.queryContractState(deployment.address);
-  if (!onChainState) {
-    await walletCtx.wallet.stop();
-    fail(`queryContractState returned null for ${deployment.address}`);
+  // 6. Read on-chain state via the public data provider
+  let onChainState: any;
+  try {
+    onChainState = await providers.publicDataProvider.queryContractState(deployment!.address);
+  } catch (err: any) {
+    await walletCtx.wallet.stop().catch(() => {});
+    fail(`queryContractState threw: ${err?.message ?? err}`);
   }
 
+  if (!onChainState) {
+    await walletCtx.wallet.stop().catch(() => {});
+    fail(`queryContractState returned null for ${deployment!.address}`);
+  }
+
+  // 7. Decode and print ledger state
+  const ls = VeilPass.ledger(onChainState.data);
   console.log(`✅ e2e-check passed`);
-  console.log(`   contractAddress: ${deployment.address}`);
+  console.log(`   contractAddress: ${deployment!.address}`);
   console.log(`   network:         ${network}`);
+  console.log(`   eligible:        ${ls.eligible}`);
+  console.log(`   threshold_used:  ${ls.threshold_used}`);
 
   await walletCtx.wallet.stop();
   process.exit(0);
 }
 
 main().catch(async (err) => {
-  console.error(err);
+  console.error('❌ Unhandled error:', err instanceof Error ? err.message : err);
   process.exit(1);
 });

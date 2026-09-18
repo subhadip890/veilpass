@@ -15,8 +15,9 @@ build/
 .env.test.local
 .env.production.local
 
-# Contract artifacts
-contracts/managed/
+# Contract artifacts (managed/veilpass is committed for challenge reviewers)
+contracts/managed/*
+!contracts/managed/veilpass/
 
 # Deployment info
 deployment.json
@@ -58,3 +59,4 @@ temp/
 
 # Midnight wallet sync state (per-network serialized wallet state cache)
 .midnight-wallet-state/
+midnight-level-db/

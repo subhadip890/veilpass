@@ -1,0 +1,49 @@
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+// PUBLIC LEDGER STATE (on-chain, visible to all observers):
+//   policy_threshold - Uint<16>: The immutable minimum policy threshold established by the contract (18).
+//                      Prevents any caller from lowering the age requirement.
+//   eligible         - Boolean: Shared contract state indicating that a valid proof was recorded on this
+//                      contract. IMPORTANT: This is a global flag on the contract; it does NOT authenticate,
+//                      identify, or bind eligibility to the specific wallet or user viewing the state.
+//   threshold_used   - Uint<16>: The threshold verified in the proof (must satisfy threshold >= policy_threshold).
+//
+// PRIVATE WITNESS (client-side only, never leaves user's machine):
+//   privateAge       - Uint<16>: Supplied off-chain to the local ZK prover. Never written to ledger state.
+//
+// WHAT THE CIRCUIT PROVES:
+//   1. Policy enforcement: threshold >= policy_threshold. A caller requesting proof cannot lower the
+//      requirement to 0 or any value below 18.
+//   2. Threshold compliance: caller's private age >= threshold.
+//   3. Truthful state update: eligible and threshold_used reflect the verified proof on this contract.
+//   4. Selective disclosure: disclose() is used deliberately and exclusively on the minimum public
+//      outputs needed for state updates. The exact age is never disclosed.
+//
+// LIMITATIONS & TRUST BOUNDARIES:
+//   - Self-entered age limitation: In Level 1, age is self-attested. The proof proves only that the
+//     supplied private integer satisfies age >= threshold >= 18; it does not prove real-world birth date
+//     or legal identity without an accredited issuer credential (Level 3 roadmap).
+//   - Global state limitation: 'eligible' is shared contract-level state, not a per-user credential,
+//     soulbound token, or user-authenticated session. Future frontend or integration guidance must never
+//     present this boolean as proof about the currently connected viewer.
+
+export ledger policy_threshold: Uint<16>;
+export ledger eligible: Boolean;
+export ledger threshold_used: Uint<16>;
+
+witness privateAge(): Uint<16>;
+
+constructor() {
+  policy_threshold = disclose(18);
+}
+
+export circuit checkEligibility(threshold: Uint<16>): [] {
+  assert(threshold >= policy_threshold, "threshold cannot be below policy threshold (18)");
+  const age: Uint<16> = privateAge();
+  const isEligible: Boolean = (age >= threshold);
+  assert(isEligible, "age is below threshold");
+  eligible = disclose(isEligible);
+  threshold_used = disclose(threshold);
+}
