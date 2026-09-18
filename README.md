@@ -1,212 +1,141 @@
-# veilpass
+# VeilPass
 
-A Midnight Network smart contract scaffolded with create-mn-app.
+**Rise In Midnight Builder Challenge — Level 1: VeilPass (Age / Eligibility Gate)**
 
-## Quick start
+VeilPass is a privacy-preserving smart contract built on the **Midnight Network**. It enables users to prove eligibility (such as meeting an age threshold of 18+ or 21+) using zero-knowledge proofs without exposing their actual age, birth date, or identity on the public ledger.
 
-Requirements: Node 22, Docker (with Compose v2), and the Compact compiler at the version pinned in `.compact-version` at the create-mn-app repo root (the version this project was scaffolded against).
+---
 
-> **On Windows:** the npm scripts in this project run natively (PowerShell or cmd.exe), but the Compact compiler publishes no native Windows binary — so `npm run compile`, and `npm run setup` which calls it, need to run inside WSL. See Midnight's [installation docs](https://docs.midnight.network/getting-started/installation).
+## The Concept & Privacy Model
 
-```bash
-npm install
-npm run setup
-npm run test:e2e
-```
+In traditional online age-gating systems, users are forced to overshare personal identifying information (IDs, driver's licenses, credit cards, or exact dates of birth). This creates centralized honeypots of sensitive identity data.
 
-`npm run setup` runs end-to-end with no prompts:
+VeilPass demonstrates zero-knowledge selective disclosure on Midnight:
 
-1. `docker compose up -d --wait` — starts a local Midnight devnet (node, indexer, proof-server) and blocks until all three pass their healthchecks.
-2. `npm run compile` — compiles `contracts/hello-world.compact` to `contracts/managed/hello-world/`.
-3. `npm run deploy` — derives the genesis-seed wallet (NIGHT pre-minted), registers UTXOs for DUST generation, deploys the contract, writes `.midnight-state.json`.
+### What is Public (On-Chain Ledger State)
+- `policy_threshold`: Uint<16> initialized to 18 by the contract constructor. Enforces the contract's immutable minimum age requirement.
+- `eligible`: Boolean (`true` / `false`) indicating that a valid proof was executed on this shared contract.
+- `threshold_used`: Uint<16> recording the threshold tested in the proof (must satisfy `threshold >= policy_threshold`).
+- The ZK proof itself, attesting to computational correctness on-chain.
 
-`npm run test:e2e` reconnects to the deployed contract and reads its ledger state. Exits 0 if the contract is live and indexable.
+### What is Private (Client-Side Witness)
+- `age`: Uint<16> witness passed only to the local prover off-chain. It **never** leaves the caller's machine, is never sent to the network or ledger, and is never logged in error messages.
 
-## Local devnet
+### What the Circuit Proves
+- **Policy Enforcement**: `threshold >= policy_threshold`. A caller requesting proof cannot lower the threshold to zero or any value below 18.
+- **Eligibility Compliance**: The caller possesses a private integer `age` such that `age >= threshold`.
+- **Truthful State Update**: The `eligible` status and `threshold_used` fields are updated truthfully according to this verified proof.
+- **Selective Disclosure**: `disclose()` is used deliberately and exclusively on the minimum outputs (`isEligible` and `threshold`) needed for on-chain state updates.
 
-The project ships its own devnet via `docker-compose.yml`:
+---
 
-| Service        | Port | Purpose                                         |
-| -------------- | ---- | ----------------------------------------------- |
-| `node`         | 9944 | Midnight node, `dev` chain preset               |
-| `indexer`      | 8088 | GraphQL indexer for chain state                 |
-| `proof-server` | 6300 | Generates ZK proofs for contract transactions   |
+## Important Trust & Architectural Limitations
 
-State lives in container-managed volumes. Tear everything down with:
+### 1. Self-Entered Age Trust Boundary
+> **Trust Caveat:**
+> In this Level 1 demonstration, the private age is self-entered by the user. The zero-knowledge circuit proves only that **the supplied private value meets or exceeds the required threshold**. It does **not** cryptographically prove a person's real-world identity, legal birth date, or physical age without a credential issued by an accredited authority.
+>
+> In the Level 3 vision, VeilPass will extend this foundation to consume Verifiable Credentials / Decentralized Identifiers (DIDs) signed by trusted identity issuers.
 
-```bash
-docker compose down -v
-```
+### 2. Global State Limitation (Shared Ledger State)
+> **Global State Boundary:**
+> In this Level 1 contract, `eligible: Boolean` is a **shared global ledger variable** on the contract. It records that a valid proof was executed on-chain.
+>
+> **Crucial distinction:** It does **NOT** authenticate, identify, or certify the individual user or connected wallet viewing the state. Any frontend or dApp integrating this contract must never present `eligible: true` as proof about the currently connected viewer. Level 2 and Level 3 designs introduce per-user nullifiers, commitments, and session-bound tokens.
 
-That removes all containers, networks, and volumes. The next `npm run setup` starts from a clean slate.
+### 3. Guidance for Future Frontend Implementations
+When building a web frontend or dApp for VeilPass:
+- **Never present the global `eligible` Boolean as the connected wallet's status**: Querying `eligible: true` from the shared contract indicates only that someone successfully ran a valid proof on this contract instance; it does NOT mean the user who connected their wallet is verified.
+- **Do not gate application access purely on shared contract state**: Reading the public ledger state cannot authenticate the current user. Access gates require session-bound signatures or nullifier-backed commitments.
+- **Level 1 UI Presentation**: Frontends should explicitly label the value as *"Contract Ledger Status: Valid Proof Recorded On-Chain"*, and only show user-specific success within the ephemeral local proof generation flow.
 
-## ⚠️ LOCAL DEVNET ONLY
+---
 
-The deploy script uses a well-known genesis seed (`0000…0001`) so the
-pre-minted NIGHT in the `dev` chain preset is immediately available. **Do
-not use this seed against Preprod, mainnet, or any environment that
-handles real value** — anyone running this devnet has full access to
-funds at this seed.
+## Contract Deployments
 
-## Networks
-
-This DApp supports three networks:
-
-| Network | When to use | Default? |
+| Network | Status | Contract Address |
 |---|---|---|
-| `undeployed` | Local devnet bundled in `docker-compose.yml`. Genesis seed is hardcoded; no funding needed. | yes |
-| `preview` | Public preview testnet. Faucet at `https://midnight-tmnight-preview.nethermind.dev`. |  |
-| `preprod` | Public preprod testnet. Faucet at `https://midnight-tmnight-preprod.nethermind.dev`. |  |
+| **Local Devnet** (`undeployed`) | **Deployed (Local)** | `74f727d9dca0d28ef6b30953a250b061ad6da95859b0c4826b4a3fc06702a3c6` |
+| **Preprod** (`preprod`) | *Pending* | *(Pending deployment)* |
+| **Preview** (`preview`) | *Pending* | *(Pending deployment)* |
 
-The active network is **sticky**: whichever network you last interacted
-with stays active until you switch. Any command run with `--network <name>`
-also sets that network active for subsequent commands. The default on a
-fresh project is `undeployed` (local devnet).
+---
 
-```sh
-npm run setup -- --network preview   # runs on preview AND makes it active
-npm run cli                          # still uses preview
-npm run check-balance                # still uses preview
-```
+## Fresh Clone & Setup Instructions
 
-You can also switch without running anything else:
+### Prerequisites
+- **Node.js**: v22+
+- **Docker & Docker Compose**: v2+
+- **Compact Compiler**: v0.5.2+ installed in WSL/Linux environment (e.g. `~/.local/bin/compact`)
 
-```sh
-npm run network preview         # active network is now preview
-npm run network                 # prints current active network
-npm run network undeployed      # switch back to local devnet
-```
-
-### How wallets work across networks
-
-- `undeployed` uses a hardcoded genesis seed. Local devnet pre-funds it.
-- `preview` and `preprod` generate a fresh wallet on first use: a 24-word
-  BIP-39 recovery phrase (printed once) plus its derived seed, both stored
-  in `.midnight-state.json` (gitignored). The wallet survives switching
-  networks — switch back later and your funded wallet returns.
-- **Back up your recovery phrase** if you fund a public-network wallet you
-  care about. It is printed when the wallet is created and kept in
-  `.midnight-state.json` under `wallets.<network>.mnemonic`. Anyone holding
-  the phrase controls the wallet.
-- Wallets created before mnemonic support keep working from their stored
-  `seed`; they just have no phrase to import into Lace.
-
-### Using the same wallet as Lace
-
-Seeds are derived with the standard BIP-39 `mnemonicToSeed` step — the same
-convention Lace uses — so identity is portable in both directions:
-
-- **Bring your Lace wallet here**: pass your recovery phrase via the
-  `MIDNIGHT_WALLET_MNEMONIC` env var — the derived addresses match Lace.
-  To keep the phrase out of your shell history, enter it with a hidden
-  prompt instead of typing it inline:
-
-  ```bash
-  read -s MIDNIGHT_WALLET_MNEMONIC && export MIDNIGHT_WALLET_MNEMONIC
-  npm run deploy
-  ```
-- **Take a scaffold wallet to Lace**: restore Lace from the 24-word phrase
-  in `.midnight-state.json`.
-
-### Funding a public-network wallet
-
-On the first run with `--network preview` (or `preprod`):
-
-1. `setup` will print your wallet address and the faucet URL.
-2. Open the faucet URL, paste the address, request tNIGHT.
-3. `setup` polls the wallet balance every 10 s and continues automatically
-   once funds arrive.
-4. The default poll budget is 10 minutes. Override with
-   `MIDNIGHT_FAUCET_TIMEOUT_MS=1800000` (30 min) for unattended runs.
-
-If the faucet is slow or the script times out, your seed is preserved.
-Re-run `npm run setup -- --network preview` once the funds land.
-
-### Environment overrides
-
-These env vars override the active network's config (no per-network
-suffix — they apply to whichever network is active for the run):
-
-| Variable | Effect |
-|---|---|
-| `MIDNIGHT_WALLET_SEED` | Use this hex seed (32-128 hex chars; a Lace-compatible BIP-39 seed is 128) instead of generating/persisting one. Useful for CI with a pre-funded wallet. |
-| `MIDNIGHT_WALLET_MNEMONIC` | Use this BIP-39 recovery phrase instead of generating a wallet — e.g. your Lace phrase, for the same addresses as Lace. Not persisted. Set only one of seed/mnemonic. |
-| `MIDNIGHT_INDEXER_URL` | Override the indexer GraphQL URL. |
-| `MIDNIGHT_INDEXER_WS_URL` | Override the indexer WS URL. |
-| `MIDNIGHT_NODE_URL` | Override the node RPC URL. |
-| `MIDNIGHT_FAUCET_URL` | Override the faucet URL printed during setup. |
-| `MIDNIGHT_PROOF_SERVER_URL` | Override the proof server URL — set to a public proof server (e.g. `https://lace-proof-pub.preview.midnight.network`) to skip running one locally. |
-| `MIDNIGHT_FAUCET_TIMEOUT_MS` | Faucet poll budget in milliseconds (default 600000 = 10 min). |
-
-By default all networks use the **local** proof server. Public proof
-servers exist (see the env override above) but the local default keeps
-your witness data on your machine and avoids depending on a remote
-service for the deploy hot path.
-
-### Switching back to local devnet
-
-```sh
-npm run network undeployed     # or: npm run setup -- --network undeployed
-```
-
-Your preview/preprod wallet seeds and deploy addresses stay in
-`.midnight-state.json`. Switch back later, and they're still there.
-
-### Wallet sync cache
-
-After each `deploy`, `cli`, or `check-balance` run, the scripts serialize the
-wallet's synced state to `.midnight-wallet-state/<network>/` (gitignored).
-The next run on the same network restores from that snapshot and only catches
-up to the latest block instead of replaying from genesis — meaningful on
-`preview` / `preprod` where a from-seed sync takes minutes.
-
-If the cache is stale or corrupt (e.g. after an SDK upgrade with an
-incompatible state format) the wallet falls back to a fresh from-seed sync
-with a one-line warning. `npm run clean` removes the cache along with other
-generated state.
-
-## Available scripts
-
-| Script                  | Description                                                    |
-| ----------------------- | -------------------------------------------------------------- |
-| `npm run setup`         | One-shot: start devnet, compile, deploy.                       |
-| `npm run compile`       | Compile the Compact contract.                                  |
-| `npm run deploy`        | Deploy the compiled contract (requires devnet up + compiled).  |
-| `npm run cli`           | Interactive CLI to call circuits on the deployed contract.     |
-| `npm run check-balance` | Print the genesis-seed wallet's NIGHT and DUST balances.       |
-| `npm run test:e2e`      | Smoke + read-back check against the deployed contract.         |
-| `npm run clean`         | Remove `contracts/managed/`, `.midnight-state.json`, and `.midnight-wallet-state/`. |
-| `npm run proof-server:start` / `:stop` | Compose lifecycle for just the proof-server service. |
-
-## Project structure
-
-```
-veilpass/
-├── contracts/
-│   └── hello-world.compact     # Compact source
-├── scripts/
-│   └── e2e-check.ts            # smoke + read-back
-├── src/
-│   ├── network.ts              # network selection + state file management
-│   ├── wallet.ts               # wallet construction + sync-state cache
-│   ├── setup.ts                # orchestrator for `npm run setup`
-│   ├── deploy.ts               # deploy the contract
-│   ├── cli.ts                  # interact with deployed contract
-│   └── check-balance.ts        # NIGHT / DUST balance
-├── docker-compose.yml          # node + indexer + proof-server
-├── .midnight-state.json        # written by deploy (gitignored)
-├── .midnight-wallet-state/     # serialized sync state per network (gitignored)
-├── package.json
-└── tsconfig.json
-```
-
-## Compact compiler version
-
-`.compact-version` at the create-mn-app repo root pinned the compiler
-version this project was scaffolded against. To upgrade your local
-compiler to that version:
+### Step-by-Step Commands for a Fresh Clone
 
 ```bash
-compact update <version>
-compact use <version>
+# 1. Clone repository and install dependencies
+git clone <repo-url> veilpass
+cd veilpass
+npm install
+
+# 2. Start local Midnight devnet services (node, indexer, proof-server)
+docker compose up -d
+
+# 3. Verify services are healthy
+docker compose ps
+
+# 4. Compile the Compact smart contract
+npm run compile
+
+# 5. Run the automated contract unit test suite
+npm test
+
+# 6. Typecheck source and test scripts
+npm run build
+
+# 7. Deploy to local devnet
+npm run deploy
+
+# 8. Run an end-to-end smoke test
+npm run test:e2e
+
+# 9. Launch interactive CLI
+npm run cli
 ```
+
+---
+
+## Automated Test Coverage
+
+Run the unit test suite:
+```bash
+npm test
+```
+
+The test suite runs against the compiled Compact JavaScript bytecode using `@midnight-ntwrk/compact-runtime` and covers 8 test cases:
+1. **Contract Initialization**: Constructor sets `policy_threshold = 18`, `eligible = false`, `threshold_used = 0`.
+2. **Eligible Input**: `age = 25 >= threshold = 18` sets `eligible = true` and `threshold_used = 18`.
+3. **Ineligible Input**: `age = 16 < threshold = 18` triggers circuit assertion failure (`age is below threshold`).
+4. **Policy Enforcement (Zero Threshold)**: Caller passing `threshold = 0` is strictly rejected (`threshold cannot be below policy threshold (18)`).
+5. **Policy Enforcement (Sub-18 Threshold)**: Underage caller (age 17) attempting to pass `threshold = 17` is strictly rejected.
+6. **Boundary Condition**: `age === threshold === policy_threshold` (all 18) evaluates as eligible.
+7. **Configurable Threshold**: Caller proving 21+ (`age = 22 >= threshold = 21 >= policy 18`) succeeds with `threshold_used = 21`.
+8. **Privacy Inspection**: Verifies that the private age witness value (`42n`) does not appear in any public ledger field or circuit return value.
+
+---
+
+## Private State Password Handling
+
+LevelDB private state storage requires an encryption password:
+- **Local Devnet (`undeployed`)**: Defaults to a development placeholder (`Local-Devnet-Development-Placeholder-1`) for zero-config local testing.
+- **Public Networks (`preview` / `preprod`)**: A user-supplied `PRIVATE_STATE_PASSWORD` environment variable is strictly required (minimum 16 characters). Scripts will abort with an error if it is missing, and the password is never logged or printed:
+  ```bash
+  export PRIVATE_STATE_PASSWORD="YourSecurePassword123!"
+  npm run deploy -- --network preview
+  ```
+
+---
+
+## Security & Privacy Practices
+
+- **Never Commit Secrets**: Wallet seeds, recovery mnemonics, private keys, `.midnight-state.json`, and `.midnight-wallet-state/` are strictly gitignored and must never be committed to source control.
+- **Local Private Databases**: LevelDB private state is stored in `veilpass-private-state/` (gitignored by `*-state/`), ensuring no database binaries are tracked by Git.
+- **Genesis Seed Restriction**: The hardcoded genesis seed is strictly restricted to local devnet (`undeployed`) and must never be used on testnets or mainnet.
