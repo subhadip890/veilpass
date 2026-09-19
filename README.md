@@ -6,7 +6,7 @@
 | Network | Status | Contract Address |
 |---|---|---|
 | **Local Devnet** (`undeployed`) | **Deployed (Local)** | `74f727d9dca0d28ef6b30953a250b061ad6da95859b0c4826b4a3fc06702a3c6` |
-| **Preview** (`preview`) | *Pending* | *(Pending deployment)* |
+| **Preview** (`preview`) | **Deployed** | `2b1ccf76fd764dd005121c45ec1ff6a14e819b4387d455c9283a97f886eb37c2` |
 | **Preprod** (`preprod`) | *Pending* | *(Pending deployment)* |
 
 ## What This Does
@@ -136,9 +136,9 @@ VeilPass is envisioned as a universal, privacy-preserving age and eligibility ga
 
 ![VeilPass Compact compilation showing the checkEligibility circuit](docs/screenshots/compile-success.png)
 
-### Public Network Deployment
+### Successful Preview Deployment
 
-*Pending public network deployment (Preview / Preprod)*
+![VeilPass deployed successfully to Midnight Preview](docs/screenshots/preview-deployment.png)
 
 ## Security
 
