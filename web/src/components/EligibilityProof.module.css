@@ -1,0 +1,129 @@
+.card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 1.5rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.titleIcon {
+  font-size: 1rem;
+}
+
+.badge {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.badge[data-state='locked'] {
+  color: #718096;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.badge[data-state='ready'] {
+  color: #9f7aea;
+  background: rgba(159, 122, 234, 0.1);
+  border: 1px solid rgba(159, 122, 234, 0.25);
+}
+
+.lockedPane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  text-align: center;
+  gap: 0.75rem;
+}
+
+.lockIcon {
+  font-size: 3rem;
+  color: #2d3748;
+  margin-bottom: 0.25rem;
+  line-height: 1;
+}
+
+.lockedTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #718096;
+  margin: 0;
+}
+
+.requirements {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+  width: 100%;
+  max-width: 320px;
+}
+
+.requirements li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: #4a5568;
+  transition: color 0.2s ease;
+}
+
+.requirements li[data-met='true'] {
+  color: #68d391;
+}
+
+.reqIcon {
+  font-size: 0.8rem;
+  width: 16px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.configNote {
+  font-size: 0.78rem;
+  color: #4a5568;
+  margin: 0.5rem 0 0;
+  line-height: 1.5;
+  max-width: 360px;
+}
+
+.activePane {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.disclaimer {
+  font-size: 0.78rem;
+  color: #4a5568;
+  line-height: 1.5;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding-top: 0.75rem;
+  margin: 0;
+}

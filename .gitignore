@@ -63,3 +63,20 @@ midnight-level-db/
 
 # Local review archives
 *.zip
+
+# Frontend (web/)
+web/dist/
+web/node_modules/
+
+# Vercel deployment
+.vercel/
+
+# Environment files (keep example committed)
+.env.*
+!.env.example
+web/.env.*
+!web/.env.example
+
+# Private state databases
+veilpass-private-state/
+*-private-state/

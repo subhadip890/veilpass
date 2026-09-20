@@ -17,7 +17,11 @@
     "proof-server:stop": "docker compose down",
     "clean": "node scripts/clean.mjs",
     "test": "npx tsx scripts/test.ts",
-    "test:e2e": "npx tsx scripts/e2e-check.ts"
+    "test:e2e": "npx tsx scripts/e2e-check.ts",
+    "dev": "cd web && npm run dev",
+    "build:web": "cd web && npm run build",
+    "test:web": "cd web && npm test",
+    "lint": "cd web && npm run lint"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
