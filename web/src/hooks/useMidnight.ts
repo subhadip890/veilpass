@@ -6,23 +6,23 @@
  *    detecting -> ready -> connecting -> connected -> disconnecting -> error -> unavailable
  * 2. Stable metadata only:
  *    DiscoveredProvider stores key, rdns, name, icon, apiVersion.
- *    Never stores the live InitialAPI Remote API proxy in React state or refs.
- * 3. Fresh provider resolution:
- *    Every connect() call resolves the InitialAPI proxy directly from window.midnight
- *    at click time, preventing stale channel / shutdown proxy errors.
- * 4. Stop provider polling immediately once a provider is detected.
- * 5. Discovery effects (load, focus, visibilitychange) never overwrite connecting,
- *    connected, or disconnecting states.
+ *    Never stores the live InitialAPI Remote API proxy in React state.
+ * 3. Provider generation tracking:
+ *    Maintains proxy reference, generation counter, and dead-proxy status in a ref.
+ * 4. Active discovery lifecycle:
+ *    Keeps focus, pageshow, and visibilitychange event listeners active throughout
+ *    the component lifecycle; only cleans up listeners on unmount. Rapid polling stops
+ *    once a provider is detected.
+ * 5. Discovery effects (load, focus, pageshow, visibilitychange) never overwrite
+ *    connecting, connected, or disconnecting states.
  * 6. Disconnect:
- *    API v4.0.1 has no official disconnect() method; performs a clean local DApp
- *    session teardown, cancels in-flight operations, and returns immediately to ready.
+ *    Local DApp session teardown, cancels in-flight operations, and returns to ready.
  * 7. Error classification:
  *    Strictly differentiates explicit user rejection from channel shutdown, timeout,
  *    wallet locked, network mismatch, provider disappeared, and unknown errors.
- *    Never displays "request declined" unless rejection is positively proven.
- * 8. Safe Cancel/Reset:
- *    Allows user to safely reset frontend state without falsely claiming to cancel
- *    unsupported wallet-side operations.
+ * 8. Channel shutdown recovery:
+ *    Invalidates current provider generation in ref, cancels attempt counter,
+ *    and provides reloadWalletChannel action.
  * 9. Privacy & Security:
  *    Never logs recovery phrases, seeds, passwords, private keys, or full addresses.
  */
@@ -85,6 +85,15 @@ export interface MidnightActions {
   disconnect: () => void;
   reset: () => void;
   getConnectedApi: () => ConnectedAPI | null;
+  reloadWalletChannel: () => void;
+}
+
+export interface ProviderGenerationRecord {
+  key: string;
+  proxyRef: unknown;
+  generation: number;
+  discoveredAt: number;
+  isDead: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -96,7 +105,7 @@ export function shortenAddress(address: string): string {
 
 /**
  * Enumerate window.midnight for valid InitialAPI providers and return
- * stable metadata ONLY. Never returns or stores live API proxies.
+ * stable metadata ONLY. Never returns or stores live API proxies in state.
  */
 export function discoverProviders(): DiscoveredProvider[] {
   if (typeof window === 'undefined' || !window.midnight || typeof window.midnight !== 'object') {
@@ -133,33 +142,87 @@ export function discoverProviders(): DiscoveredProvider[] {
 }
 
 /**
- * Resolve a fresh InitialAPI proxy directly from window.midnight at call time.
+ * Track and update provider generations in the ref.
+ * Detects UUID changes and InitialAPI object replacement.
  */
-function resolveFreshInitialAPI(key?: string): { api: InitialAPI; key: string } | null {
+export function updateProviderGenerations(
+  generationsMap: Map<string, ProviderGenerationRecord>
+): void {
+  if (typeof window === 'undefined' || !window.midnight || typeof window.midnight !== 'object') {
+    return;
+  }
+
+  const currentKeys = new Set(Object.keys(window.midnight));
+
+  // Clean up keys that no longer exist
+  for (const key of generationsMap.keys()) {
+    if (!currentKeys.has(key)) {
+      generationsMap.delete(key);
+    }
+  }
+
+  // Update or insert records for current keys
+  for (const [key, raw] of Object.entries(window.midnight)) {
+    if (!raw || typeof raw !== 'object' || typeof (raw as any).connect !== 'function') {
+      continue;
+    }
+
+    const existing = generationsMap.get(key);
+    if (!existing) {
+      generationsMap.set(key, {
+        key,
+        proxyRef: raw,
+        generation: 1,
+        discoveredAt: Date.now(),
+        isDead: false,
+      });
+    } else if (existing.proxyRef !== raw) {
+      // Detected replacement of InitialAPI proxy object under the same key
+      existing.proxyRef = raw;
+      existing.generation += 1;
+      existing.discoveredAt = Date.now();
+      existing.isDead = false; // Fresh proxy replaces dead proxy
+    }
+  }
+}
+
+/**
+ * Resolve InitialAPI proxy directly from window.midnight.
+ * Checks whether the proxy is currently marked as dead from a previous channel shutdown.
+ */
+export function resolveInitialAPI(
+  key: string | undefined,
+  generationsMap: Map<string, ProviderGenerationRecord>
+): { api: InitialAPI; key: string; isDead: boolean } | null {
   if (typeof window === 'undefined' || !window.midnight || typeof window.midnight !== 'object') {
     return null;
   }
 
-  // 1. If a specific key is requested, check if it still exists
+  updateProviderGenerations(generationsMap);
+
+  // 1. If key specified and present
   if (key && window.midnight[key]) {
-    const entry = window.midnight[key];
-    if (entry && typeof entry.connect === 'function') {
-      return { api: entry, key };
+    const raw = window.midnight[key];
+    if (raw && typeof raw.connect === 'function') {
+      const gen = generationsMap.get(key);
+      return { api: raw, key, isDead: gen?.isDead ?? false };
     }
   }
 
-  // 2. Otherwise look for a Lace provider by rdns or name
-  for (const [k, entry] of Object.entries(window.midnight)) {
-    if (!entry || typeof entry.connect !== 'function') continue;
-    if (/lace/i.test(entry.rdns || '') || /lace/i.test(entry.name || '')) {
-      return { api: entry, key: k };
+  // 2. Otherwise search for Lace provider
+  for (const [k, raw] of Object.entries(window.midnight)) {
+    if (!raw || typeof raw.connect !== 'function') continue;
+    if (/lace/i.test(raw.rdns || '') || /lace/i.test(raw.name || '')) {
+      const gen = generationsMap.get(k);
+      return { api: raw, key: k, isDead: gen?.isDead ?? false };
     }
   }
 
   // 3. Fallback to first available provider
-  for (const [k, entry] of Object.entries(window.midnight)) {
-    if (entry && typeof entry.connect === 'function') {
-      return { api: entry, key: k };
+  for (const [k, raw] of Object.entries(window.midnight)) {
+    if (raw && typeof raw.connect === 'function') {
+      const gen = generationsMap.get(k);
+      return { api: raw, key: k, isDead: gen?.isDead ?? false };
     }
   }
 
@@ -187,7 +250,7 @@ export function classifyError(err: unknown): { errorKind: ErrorKind; errorMessag
       return {
         errorKind: 'channel_shutdown',
         errorMessage:
-          'Lace is installed, but its connection channel is inactive. Open and unlock Lace in the browser sidebar, confirm Midnight Preprod, then try again.',
+          'Lace’s browser channel closed. Open and unlock Lace, then reload this page to create a new secure connection.',
       };
     }
     if (code === 'InvalidRequest') {
@@ -222,12 +285,13 @@ export function classifyError(err: unknown): { errorKind: ErrorKind; errorMessag
     /object can no longer be used/i.test(msg) ||
     /message port closed/i.test(msg) ||
     /disconnected port/i.test(msg) ||
-    /disconnected authenticator channel/i.test(msg)
+    /disconnected authenticator channel/i.test(msg) ||
+    /Lace[’']s browser channel closed/i.test(msg)
   ) {
     return {
       errorKind: 'channel_shutdown',
       errorMessage:
-        'Lace is installed, but its connection channel is inactive. Open and unlock Lace in the browser sidebar, confirm Midnight Preprod, then try again.',
+        'Lace’s browser channel closed. Open and unlock Lace, then reload this page to create a new secure connection.',
     };
   }
 
@@ -236,7 +300,7 @@ export function classifyError(err: unknown): { errorKind: ErrorKind; errorMessag
     return {
       errorKind: 'timeout',
       errorMessage:
-        'Lace is installed, but its connection channel is inactive. Open and unlock Lace in the browser sidebar, confirm Midnight Preprod, then try again.',
+        'Connection timed out. Open and unlock Lace in the browser sidebar, confirm Midnight Preprod, then try again.',
     };
   }
 
@@ -279,110 +343,108 @@ export function useMidnight(): [MidnightState, MidnightActions] {
   const isConnectingRef = useRef(false);
   const attemptCounterRef = useRef(0);
   const selectedProviderRef = useRef<DiscoveredProvider | null>(null);
+  const providerGenerationsRef = useRef<Map<string, ProviderGenerationRecord>>(new Map());
 
-  // Keep selectedProviderRef in sync with state
+  // ── applyDiscovery ─────────────────────────────────────────────────────────
+
+  const applyDiscovery = useCallback((providers: DiscoveredProvider[]) => {
+    setState((prev) => {
+      // Never overwrite or interrupt an active connection or in-flight transitions
+      if (
+        prev.status === 'connecting' ||
+        prev.status === 'connected' ||
+        prev.status === 'disconnecting'
+      ) {
+        return prev;
+      }
+
+      if (providers.length === 0) {
+        return {
+          ...prev,
+          status: 'unavailable',
+          providers: [],
+          selectedProvider: null,
+          errorMessage:
+            prev.status === 'error'
+              ? prev.errorMessage
+              : 'No compatible Midnight wallet found. Install the Lace extension and refresh.',
+        };
+      }
+
+      updateProviderGenerations(providerGenerationsRef.current);
+
+      const currentSelectedKey = selectedProviderRef.current?.key;
+      const stillPresent = currentSelectedKey
+        ? providers.find((p) => p.key === currentSelectedKey)
+        : null;
+      const nextSelected = stillPresent ?? providers[0];
+      selectedProviderRef.current = nextSelected;
+
+      return {
+        ...prev,
+        status: prev.status === 'detecting' || prev.status === 'unavailable' ? 'ready' : prev.status,
+        providers,
+        selectedProvider: nextSelected,
+      };
+    });
+  }, []);
+
+  // ── Provider discovery effect ──────────────────────────────────────────────
+
   useEffect(() => {
-    selectedProviderRef.current = state.selectedProvider;
-  }, [state.selectedProvider]);
-
-  // ── Discovery Lifecycle ───────────────────────────────────────────────────
-
-  useEffect(() => {
-    let stopped = false;
+    let unmounted = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     let pollCount = 0;
 
-    function applyDiscovery(providers: DiscoveredProvider[]) {
-      if (stopped) return;
-      setState((prev) => {
-        // Never overwrite active connecting, connected, or disconnecting states
-        if (
-          prev.status === 'connecting' ||
-          prev.status === 'connected' ||
-          prev.status === 'disconnecting'
-        ) {
-          return prev;
-        }
-
-        if (providers.length === 0) {
-          return {
-            ...prev,
-            status: 'unavailable',
-            connectPhase: null,
-            providers: [],
-            selectedProvider: null,
-            errorMessage: 'No compatible Midnight wallet found. Install the Lace extension and refresh.',
-            errorKind: null,
-          };
-        }
-
-        const selected =
-          (prev.selectedProvider &&
-            providers.find((p) => p.key === prev.selectedProvider?.key)) ??
-          providers[0];
-
-        return {
-          ...prev,
-          status: 'ready',
-          connectPhase: null,
-          providers,
-          selectedProvider: selected,
-          errorMessage: null,
-          errorKind: null,
-        };
-      });
-    }
-
-    function check() {
-      if (stopped) return;
+    function poll() {
+      if (unmounted) return;
       const providers = discoverProviders();
       if (providers.length > 0) {
         applyDiscovery(providers);
-        cleanup();
+        // Stop rapid polling once a provider is detected
         return;
       }
-
       pollCount++;
-      if (pollCount >= POLL_MAX_ATTEMPTS) {
+      if (pollCount < POLL_MAX_ATTEMPTS) {
+        pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+      } else {
         applyDiscovery([]);
-        cleanup();
-        return;
       }
-
-      pollTimer = setTimeout(check, POLL_INTERVAL_MS);
     }
 
-    function onEvent() {
-      if (stopped) return;
+    function handleEvent() {
+      if (unmounted) return;
       const providers = discoverProviders();
-      if (providers.length > 0) {
-        applyDiscovery(providers);
-        cleanup();
-      }
+      applyDiscovery(providers);
     }
 
-    function cleanup() {
-      stopped = true;
+    // Keep discovery listeners active throughout component lifecycle
+    window.addEventListener('load', handleEvent);
+    window.addEventListener('focus', handleEvent);
+    window.addEventListener('pageshow', handleEvent);
+    document.addEventListener('visibilitychange', handleEvent);
+
+    const initial = discoverProviders();
+    if (initial.length > 0) {
+      applyDiscovery(initial);
+    } else {
+      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+    }
+
+    return () => {
+      unmounted = true;
       if (pollTimer !== null) {
         clearTimeout(pollTimer);
         pollTimer = null;
       }
-      window.removeEventListener('load', onEvent);
-      window.removeEventListener('focus', onEvent);
-      document.removeEventListener('visibilitychange', onEvent);
-    }
+      window.removeEventListener('load', handleEvent);
+      window.removeEventListener('focus', handleEvent);
+      window.removeEventListener('pageshow', handleEvent);
+      document.removeEventListener('visibilitychange', handleEvent);
+    };
+  }, [applyDiscovery]);
 
-    window.addEventListener('load', onEvent);
-    window.addEventListener('focus', onEvent);
-    document.addEventListener('visibilitychange', onEvent);
-
-    // Synchronous check first — zero delay if Lace is already injected
-    check();
-
-    return cleanup;
-  }, []);
-
-  // ── connectProvider ───────────────────────────────────────────────────────
+  // ── connectProvider ────────────────────────────────────────────────────────
 
   const connectProvider = useCallback(async (provider: DiscoveredProvider) => {
     // Only one connection attempt may exist at a time
@@ -410,8 +472,7 @@ export function useMidnight(): [MidnightState, MidnightActions] {
     });
 
     try {
-      // 1. Resolve a fresh InitialAPI proxy directly from window.midnight
-      const resolved = resolveFreshInitialAPI(provider.key);
+      const resolved = resolveInitialAPI(provider.key, providerGenerationsRef.current);
       if (!resolved) {
         if (timeoutId !== null) { clearTimeout(timeoutId); timeoutId = null; }
         if (attemptCounterRef.current !== thisAttempt) return;
@@ -426,16 +487,24 @@ export function useMidnight(): [MidnightState, MidnightActions] {
         return;
       }
 
-      const { api: freshInitialApi, key: freshKey } = resolved;
+      const { api: initialApi, key: freshKey, isDead } = resolved;
 
-      // Update provider key if it changed (e.g. UUID rotated)
+      // Update provider key if UUID rotated
       if (freshKey !== provider.key) {
         selectedProviderRef.current = { ...provider, key: freshKey };
       }
 
-      // 2. Phase: opening -> approving (connect() invokes Lace approval prompt)
+      // Do not call connect() on a dead proxy whose channel has closed
+      if (isDead) {
+        if (timeoutId !== null) { clearTimeout(timeoutId); timeoutId = null; }
+        if (attemptCounterRef.current !== thisAttempt) return;
+
+        throw new Error('Lace’s browser channel closed. Open and unlock Lace, then reload this page to create a new secure connection.');
+      }
+
+      // Phase: opening -> approving (connect() invokes Lace approval prompt)
       setState((prev) => ({ ...prev, connectPhase: 'approving' }));
-      const connectPromise = freshInitialApi.connect(REQUIRED_NETWORK);
+      const connectPromise = initialApi.connect(REQUIRED_NETWORK);
 
       const connectedApi = await Promise.race([connectPromise, timeoutPromise]);
       if (timeoutId !== null) { clearTimeout(timeoutId); timeoutId = null; }
@@ -445,7 +514,7 @@ export function useMidnight(): [MidnightState, MidnightActions] {
 
       connectedApiRef.current = connectedApi;
 
-      // 3. Phase: verifying (parallel getConfiguration + getUnshieldedAddress)
+      // Phase: verifying (parallel getConfiguration + getUnshieldedAddress)
       setState((prev) => ({ ...prev, connectPhase: 'verifying' }));
 
       const [config, addressResult] = await Promise.all([
@@ -487,6 +556,15 @@ export function useMidnight(): [MidnightState, MidnightActions] {
       connectedApiRef.current = null;
       const { errorKind, errorMessage } = classifyError(err);
 
+      // Cancel/invalidate attempt counter when timeout or channel shutdown occurs
+      if (errorKind === 'channel_shutdown' || errorKind === 'timeout') {
+        attemptCounterRef.current++;
+        const gen = providerGenerationsRef.current.get(provider.key);
+        if (gen) {
+          gen.isDead = true;
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -495,18 +573,17 @@ export function useMidnight(): [MidnightState, MidnightActions] {
         errorMessage,
       }));
     } finally {
-      if (attemptCounterRef.current === thisAttempt) {
+      if (attemptCounterRef.current === thisAttempt || attemptCounterRef.current === thisAttempt + 1) {
         isConnectingRef.current = false;
       }
     }
   }, []);
 
-  // ── connect ───────────────────────────────────────────────────────────────
+  // ── connect ────────────────────────────────────────────────────────────────
 
   const connect = useCallback(async () => {
     if (isConnectingRef.current) return;
 
-    // Fresh synchronous provider discovery at click time
     const providers = discoverProviders();
     if (providers.length === 0) {
       setState((prev) => ({
@@ -528,22 +605,19 @@ export function useMidnight(): [MidnightState, MidnightActions] {
     await connectProvider(provider);
   }, [connectProvider]);
 
-  // ── disconnect ────────────────────────────────────────────────────────────
+  // ── disconnect ─────────────────────────────────────────────────────────────
 
   const disconnect = useCallback(() => {
-    // Invalidate any in-flight connection attempt
     attemptCounterRef.current++;
     isConnectingRef.current = false;
     connectedApiRef.current = null;
 
-    // Fresh synchronous provider check
     const providers = discoverProviders();
     const selected =
       (selectedProviderRef.current &&
         providers.find((p) => p.key === selectedProviderRef.current?.key)) ??
       (providers.length > 0 ? providers[0] : null);
 
-    // Return immediately to reconnectable ready state (or unavailable if wallet removed)
     setState((prev) => ({
       ...prev,
       status: providers.length > 0 ? 'ready' : 'unavailable',
@@ -558,10 +632,9 @@ export function useMidnight(): [MidnightState, MidnightActions] {
     }));
   }, []);
 
-  // ── reset / cancel ────────────────────────────────────────────────────────
+  // ── reset / cancel ─────────────────────────────────────────────────────────
 
   const reset = useCallback(() => {
-    // Invalidate any in-flight connection attempt
     attemptCounterRef.current++;
     isConnectingRef.current = false;
     connectedApiRef.current = null;
@@ -584,9 +657,27 @@ export function useMidnight(): [MidnightState, MidnightActions] {
       errorKind: null,
       errorMessage: null,
     }));
+  }, []);
+
+  // ── reloadWalletChannel ────────────────────────────────────────────────────
+
+  const reloadWalletChannel = useCallback(() => {
+    if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+      window.location.reload();
+    }
   }, []);
 
   const getConnectedApi = useCallback(() => connectedApiRef.current, []);
 
-  return [state, { connect, connectProvider, disconnect, reset, getConnectedApi }];
+  return [
+    state,
+    {
+      connect,
+      connectProvider,
+      disconnect,
+      reset,
+      getConnectedApi,
+      reloadWalletChannel,
+    },
+  ];
 }

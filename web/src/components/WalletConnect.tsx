@@ -181,14 +181,26 @@ export function WalletConnect({ state, actions }: WalletConnectProps) {
 
         {!isConnected && !isConnecting && !isDisconnecting && !isDetecting && !isUnavailable && (
           <>
-            <button
-              id="btn-connect-wallet"
-              className={styles.connectBtn}
-              onClick={actions.connect}
-              aria-label={`Connect ${providerName} to Midnight Preprod`}
-            >
-              {showError ? 'Try Again' : `Connect ${selectedProvider ? selectedProvider.name : 'Wallet'}`}
-            </button>
+            {showError && state.errorKind === 'channel_shutdown' ? (
+              <button
+                type="button"
+                id="btn-reload-wallet-channel"
+                className={styles.connectBtn}
+                onClick={actions.reloadWalletChannel}
+                aria-label="Reload Wallet Channel"
+              >
+                Reload Wallet Channel
+              </button>
+            ) : (
+              <button
+                id="btn-connect-wallet"
+                className={styles.connectBtn}
+                onClick={actions.connect}
+                aria-label={showError ? 'Try Again' : `Connect ${selectedProvider ? selectedProvider.name : 'Wallet'}`}
+              >
+                {showError ? 'Try Again' : `Connect ${selectedProvider ? selectedProvider.name : 'Wallet'}`}
+              </button>
+            )}
             {showError && (
               <button
                 type="button"

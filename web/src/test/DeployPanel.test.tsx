@@ -72,6 +72,7 @@ const defaultWalletActions: MidnightActions = {
   connectProvider: vi.fn(),
   disconnect: vi.fn(),
   reset: vi.fn(),
+  reloadWalletChannel: vi.fn(),
   getConnectedApi: vi.fn().mockReturnValue(mockConnectedApi),
 };
 
