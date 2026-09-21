@@ -18,6 +18,7 @@ import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config
 import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, getDeployment, getPrivateStatePassword } from '../src/network.js';
 import { createWallet, persistWalletState } from '../src/wallet.js';
 import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 
 // Catch any unhandled rejection or background fiber error so it never silently prints while reporting success
 process.on('unhandledRejection', (reason) => {
@@ -35,6 +36,7 @@ globalThis.WebSocket = WebSocket;
 const PRIVATE_STATE_ID = 'veilpassPrivateState';
 
 const { network, config: networkConfig } = resolveNetwork();
+setNetworkId(networkConfig.networkId);
 const WALLET = getOrCreateWallet(network);
 const SEED = WALLET.seed;
 {

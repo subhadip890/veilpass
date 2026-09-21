@@ -84,6 +84,7 @@ export interface MidnightActions {
   connectProvider: (provider: DiscoveredProvider) => Promise<void>;
   disconnect: () => void;
   reset: () => void;
+  getConnectedApi: () => ConnectedAPI | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -585,5 +586,7 @@ export function useMidnight(): [MidnightState, MidnightActions] {
     }));
   }, []);
 
-  return [state, { connect, connectProvider, disconnect, reset }];
+  const getConnectedApi = useCallback(() => connectedApiRef.current, []);
+
+  return [state, { connect, connectProvider, disconnect, reset, getConnectedApi }];
 }

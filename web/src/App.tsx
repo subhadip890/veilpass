@@ -1,5 +1,6 @@
 import { WalletConnect } from './components/WalletConnect';
 import { EligibilityProof } from './components/EligibilityProof';
+import { DeployPanel } from './components/DeployPanel';
 import { useMidnight } from './hooks/useMidnight';
 import { useVeilPass } from './hooks/useVeilPass';
 import styles from './App.module.css';
@@ -43,6 +44,8 @@ export default function App() {
           <WalletConnect state={walletState} actions={walletActions} />
           <EligibilityProof walletState={walletState} veilPass={veilPass} />
         </div>
+
+        <DeployPanel walletState={walletState} walletActions={walletActions} />
 
         <section className={styles.infoRow} aria-label="How it works">
           <div className={styles.infoCard}>

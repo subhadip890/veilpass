@@ -19,9 +19,10 @@
     "test": "npx tsx scripts/test.ts",
     "test:e2e": "npx tsx scripts/e2e-check.ts",
     "dev": "cd web && npm run dev",
-    "build:web": "cd web && npm run build",
+    "build:web": "npm run copy:artifacts && cd web && npm run build",
     "test:web": "cd web && npm test",
-    "lint": "cd web && npm run lint"
+    "lint": "cd web && npm run lint",
+    "copy:artifacts": "node scripts/copy-browser-artifacts.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",

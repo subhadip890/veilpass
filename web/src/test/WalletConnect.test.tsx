@@ -43,6 +43,7 @@ const defaultActions: MidnightActions = {
   connectProvider: noopAsync,
   disconnect: noop,
   reset: noop,
+  getConnectedApi: () => null,
 };
 
 describe('WalletConnect — component rendering & readiness instructions', () => {
