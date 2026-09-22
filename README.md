@@ -7,7 +7,7 @@
 |---|---|---|
 | **Local Devnet** (`undeployed`) | **Deployed (Local)** | `74f727d9dca0d28ef6b30953a250b061ad6da95859b0c4826b4a3fc06702a3c6` |
 | **Preview** (`preview`) | **Deployed** | `2b1ccf76fd764dd005121c45ec1ff6a14e819b4387d455c9283a97f886eb37c2` |
-| **Preprod** (`preprod`) | *Pending* | *(Pending deployment)* |
+| **Preprod** (`preprod`) | **Deployed** | `ffcaf903776ee108e1b5b891b5945d6dd3bc11ae9e557ba137c8f04fedafcba2` |
 
 ## What This Does
 
