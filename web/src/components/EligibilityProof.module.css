@@ -50,6 +50,24 @@
   border: 1px solid rgba(159, 122, 234, 0.25);
 }
 
+.badge[data-state='busy'] {
+  color: #63b3ed;
+  background: rgba(99, 179, 237, 0.12);
+  border: 1px solid rgba(99, 179, 237, 0.3);
+}
+
+.badge[data-state='success'] {
+  color: #68d391;
+  background: rgba(72, 187, 120, 0.12);
+  border: 1px solid rgba(72, 187, 120, 0.3);
+}
+
+.badge[data-state='error'] {
+  color: #fc8181;
+  background: rgba(245, 101, 101, 0.12);
+  border: 1px solid rgba(245, 101, 101, 0.3);
+}
+
 .lockedPane {
   display: flex;
   flex-direction: column;
@@ -116,14 +134,201 @@
 .activePane {
   display: flex;
   flex-direction: column;
+  gap: 1.25rem;
+}
+
+.proofForm {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.labelSub {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: #a0aec0;
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ageInput {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.65rem 3.5rem 0.65rem 0.875rem;
+  color: #f7fafc;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.ageInput:focus {
+  outline: none;
+  border-color: #9f7aea;
+  box-shadow: 0 0 0 3px rgba(159, 122, 234, 0.15);
+}
+
+.ageInput[aria-invalid='true'] {
+  border-color: #fc8181;
+}
+
+.toggleVisibilityBtn {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #718096;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.toggleVisibilityBtn:hover {
+  color: #cbd5e0;
+}
+
+.fieldError {
+  font-size: 0.75rem;
+  color: #fc8181;
+  margin: 0.1rem 0 0;
+}
+
+.helpText {
+  font-size: 0.72rem;
+  color: #718096;
+  margin: 0.1rem 0 0;
+}
+
+.submitBtn {
+  background: linear-gradient(135deg, #805ad5 0%, #6b46c1 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(107, 70, 193, 0.25);
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%);
+  box-shadow: 0 6px 16px rgba(107, 70, 193, 0.35);
+  transform: translateY(-1px);
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btnSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.errorAlert,
+.ineligibleAlert {
+  background: rgba(245, 101, 101, 0.08);
+  border: 1px solid rgba(245, 101, 101, 0.2);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ineligibleAlert {
+  background: rgba(237, 137, 54, 0.08);
+  border-color: rgba(237, 137, 54, 0.2);
+}
+
+.errorHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fc8181;
+}
+
+.ineligibleAlert .errorHeader {
+  color: #ed8936;
+}
+
+.errorIcon {
+  font-size: 0.9rem;
+}
+
+.errorMessage {
+  font-size: 0.8rem;
+  color: #cbd5e0;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.dismissBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e0;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.dismissBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .disclaimer {
   font-size: 0.78rem;
   color: #4a5568;
   line-height: 1.5;
-  border-top: 1px solid rgba(255,255,255,0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   padding-top: 0.75rem;
   margin: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

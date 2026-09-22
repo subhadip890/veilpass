@@ -3,11 +3,28 @@ import { EligibilityProof } from './components/EligibilityProof';
 import { DeployPanel } from './components/DeployPanel';
 import { useMidnight } from './hooks/useMidnight';
 import { useVeilPass } from './hooks/useVeilPass';
+import { CONTRACT_ADDRESS_REGEX } from './components/deployUtils';
 import styles from './App.module.css';
 
 export default function App() {
   const [walletState, walletActions] = useMidnight();
-  const veilPass = useVeilPass();
+  const [veilPassState, veilPassActions] = useVeilPass(walletActions);
+
+  const envContractAddress = (
+    import.meta.env as Record<string, string | undefined>
+  )['VITE_CONTRACT_ADDRESS']?.trim();
+  const enableDeployPanelEnv = (
+    import.meta.env as Record<string, string | undefined>
+  )['VITE_ENABLE_DEPLOY_PANEL']?.trim().toLowerCase();
+
+  const isContractConfigured = Boolean(
+    envContractAddress && CONTRACT_ADDRESS_REGEX.test(envContractAddress)
+  );
+
+  // Hide DeployPanel by default when a contract address is configured.
+  // Show it only when VITE_ENABLE_DEPLOY_PANEL=true or when no contract is configured.
+  const showDeployPanel =
+    !isContractConfigured || enableDeployPanelEnv === 'true';
 
   return (
     <div className={styles.root}>
@@ -42,10 +59,16 @@ export default function App() {
 
         <div className={styles.cards}>
           <WalletConnect state={walletState} actions={walletActions} />
-          <EligibilityProof walletState={walletState} veilPass={veilPass} />
+          <EligibilityProof
+            walletState={walletState}
+            veilPass={veilPassState}
+            actions={veilPassActions}
+          />
         </div>
 
-        <DeployPanel walletState={walletState} walletActions={walletActions} />
+        {showDeployPanel && (
+          <DeployPanel walletState={walletState} walletActions={walletActions} />
+        )}
 
         <section className={styles.infoRow} aria-label="How it works">
           <div className={styles.infoCard}>
