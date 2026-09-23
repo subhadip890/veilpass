@@ -308,6 +308,14 @@ VeilPass is envisioned as a universal, privacy-preserving age and eligibility ga
 
 ## Screenshots
 
+### Level 3 — Automated Tests Passing
+
+![VeilPass Level 3 automated tests passing](docs/level-3/tests-passing.png)
+
+### Level 3 — CI Pipeline Passing
+
+![VeilPass GitHub Actions CI pipeline passing](docs/level-3/ci-passing.png)
+
 ### Successful Compact Compilation
 
 ![VeilPass Compact compilation showing the checkEligibility circuit](docs/screenshots/compile-success.png)
