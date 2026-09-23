@@ -50,8 +50,13 @@ jobs:
           sh /tmp/compact-installer.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Verify Compact version
-        run: compact --version
+      - name: Install Compact compiler 0.31.1
+        run: compact update 0.31.1
+
+      - name: Verify Compact toolchain
+        run: |
+          compact --version
+          compact compile --version
 
       - name: Compile VeilPass contract
         run: npm run compile
@@ -73,3 +78,8 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+      - name: Verify Compact version
+        run: compact --version
+
+      - name: Compile VeilPass contract
+        run: npm run compile
