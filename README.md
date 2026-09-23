@@ -1,4 +1,9 @@
 # VeilPass
+# VeilPass
+
+[![CI](https://github.com/subhadip890/veilpass/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/subhadip890/veilpass/actions/workflows/ci.yml)
+
+> Prove eligibility, not identity.
 > Prove eligibility, not identity.
 
 VeilPass is a privacy-preserving zero-knowledge eligibility verification system built on the Midnight Network. It enables users to prove they satisfy an age or policy requirement (such as age &ge; 18) without disclosing their exact age, date of birth, or identity to the verifier or on the public blockchain.
