@@ -109,7 +109,7 @@ export default function App() {
           &middot; Rise In Midnight Builder Challenge &middot; Level 2
         </p>
         <p className={styles.footerNote}>
-          Level 1 limitation: age is self-attested. No identity is verified.
+          Current limitation: age is self-attested. No identity is verified.
         </p>
       </footer>
     </div>

@@ -92,7 +92,7 @@ describe('EligibilityProof Component', () => {
     expect(screen.getByRole('button', { name: /Generate Eligibility Proof/i })).toBeInTheDocument();
   });
 
-  it('3. Toggles age password mask between password and number type', () => {
+  it('3. Toggles age password mask between password and number type with keyboard accessibility', () => {
     render(
       <EligibilityProof
         walletState={mockWalletStateConnected}
@@ -104,13 +104,22 @@ describe('EligibilityProof Component', () => {
     const input = screen.getByLabelText(/Private Age Witness/i);
     const toggleBtn = screen.getByRole('button', { name: /Show age input/i });
 
+    // Verify the show/hide button does not have tabIndex="-1" and can receive focus
+    expect(toggleBtn).not.toHaveAttribute('tabindex', '-1');
+    toggleBtn.focus();
+    expect(toggleBtn).toHaveFocus();
+
     expect(input).toHaveAttribute('type', 'password');
 
+    // Activating it toggles input visibility to number
     fireEvent.click(toggleBtn);
     expect(input).toHaveAttribute('type', 'number');
-    expect(screen.getByRole('button', { name: /Hide age input/i })).toBeInTheDocument();
+    const hideBtn = screen.getByRole('button', { name: /Hide age input/i });
+    expect(hideBtn).toBeInTheDocument();
+    expect(hideBtn).not.toHaveAttribute('tabindex', '-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /Hide age input/i }));
+    // Activating again toggles input visibility back to password
+    fireEvent.click(hideBtn);
     expect(input).toHaveAttribute('type', 'password');
   });
 

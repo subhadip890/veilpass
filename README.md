@@ -126,7 +126,7 @@ npm test
 # Build production web bundle
 npm run build:web
 
-# Run web test suite (77 tests)
+# Run web test suite (78 tests)
 npm run test:web
 
 # Run ESLint
@@ -248,7 +248,7 @@ VeilPass provides strict cryptographic selective disclosure on Midnight. The bou
 
 ## Run Tests
 
-The automated verification currently includes 8 Compact contract tests and 77 web regression tests.
+The automated verification currently includes 8 Compact contract tests and 78 web regression tests.
 
 Execute the automated contract test suite:
 

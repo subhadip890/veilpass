@@ -87,4 +87,13 @@ describe('App Component — DeployPanel Visibility Control', () => {
 
     expect(screen.getByTestId('deploy-panel-component')).toBeInTheDocument();
   });
+
+  it('4. Renders the exact current limitation disclaimer in the footer', () => {
+    render(<App />);
+
+    expect(
+      screen.getByText('Current limitation: age is self-attested. No identity is verified.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Level 1 limitation/i)).not.toBeInTheDocument();
+  });
 });
