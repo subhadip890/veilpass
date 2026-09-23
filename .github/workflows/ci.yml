@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Compile, Build and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Install Compact 0.5.2
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.2/compact-installer.sh \
+            -o /tmp/compact-installer.sh
+          printf '%s  %s\n' \
+            '6c4417713f248da39ae3ba70d2bddbe7a8a1d3cd32bab3f393d228770eb12904' \
+            '/tmp/compact-installer.sh' | sha256sum --check
+          sh /tmp/compact-installer.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Compact version
+        run: compact --version
+
+      - name: Compile VeilPass contract
+        run: npm run compile
+
+      - name: Verify generated contract artifacts
+        run: git diff --exit-code -- contracts/managed/veilpass
+
+      - name: Build root TypeScript
+        run: npm run build
+
+      - name: Run contract tests
+        run: npm test
+
+      - name: Build web application
+        run: npm run build:web
+
+      - name: Run web tests
+        run: npm run test:web
+
+      - name: Run ESLint
+        run: npm run lint
