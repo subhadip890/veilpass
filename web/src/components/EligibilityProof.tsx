@@ -186,7 +186,6 @@ export function EligibilityProof({
                   className={styles.toggleVisibilityBtn}
                   onClick={() => setShowPassword((prev) => !prev)}
                   aria-label={showPassword ? 'Hide age input' : 'Show age input'}
-                  tabIndex={-1}
                 >
                   {showPassword ? 'Hide' : 'Show'}
                 </button>

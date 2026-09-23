@@ -1,11 +1,21 @@
 # VeilPass
+
+[![CI](https://github.com/subhadip890/veilpass/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/subhadip890/veilpass/actions/workflows/ci.yml)
+
 > Prove eligibility, not identity.
 
 VeilPass is a privacy-preserving zero-knowledge eligibility verification system built on the Midnight Network. It enables users to prove they satisfy an age or policy requirement (such as age &ge; 18) without disclosing their exact age, date of birth, or identity to the verifier or on the public blockchain.
 
 ---
 
-## Canonical Deployments
+## Live Demo
+
+- **Production DApp**: https://veilpass-ashy.vercel.app/
+- **Network**: Midnight Preprod
+
+---
+
+## Contract Address
 
 | Network | Status | Contract Address | Deployment Transaction ID |
 |---|---|---|---|
@@ -17,7 +27,7 @@ VeilPass is a privacy-preserving zero-knowledge eligibility verification system 
 
 ## Level 2 Interactive DApp
 
-### Live Application
+### Deployment Details
 - **Live DApp URL**: [https://veilpass-ashy.vercel.app/](https://veilpass-ashy.vercel.app/)
 - **GitHub Repository**: [https://github.com/subhadip890/veilpass.git](https://github.com/subhadip890/veilpass.git)
 - **Target Network**: Midnight Preprod
@@ -40,7 +50,20 @@ The frontend provides a real-time, interactive zero-knowledge proof flow on Midn
 
 ---
 
-### Running the Frontend Locally
+## Prerequisites
+
+- Node.js 22+
+- npm
+- Compact developer tools 0.5.2
+- Compact compiler 0.31.1
+- Docker Desktop with WSL integration on Windows
+- Midnight-compatible browser wallet configured for Preprod
+- Local Midnight proof server on http://localhost:6300
+- Preprod tNIGHT and generated DUST for transactions
+
+---
+
+## Setup & Run Locally
 
 Follow these steps to run the complete VeilPass stack and frontend on your local machine:
 
@@ -103,7 +126,7 @@ npm test
 # Build production web bundle
 npm run build:web
 
-# Run web test suite (77 tests)
+# Run web test suite (78 tests)
 npm run test:web
 
 # Run ESLint
@@ -186,10 +209,33 @@ VeilPass demonstrates zero-knowledge selective disclosure on Midnight:
 - **Truthful State Update**: Updates `eligible` and `threshold_used` on-chain to reflect the verified proof.
 - **Selective Disclosure**: Only `disclose()` is called on the minimal boolean result and the requested threshold. The private age remains completely confidential.
 
-### Level 1 Trust & Architectural Limitations
+### Current Trust & Architectural Limitations
 - **Self-Attested Age Limitation**: In this demonstration, the private age is entered by the user. The ZK circuit proves mathematically that the provided private integer satisfies `age >= threshold`, but does not verify real-world legal identity or birth date without an accredited issuer credential (the Level 3 vision).
 - **Global Eligible-State Limitation**: The on-chain `eligible` flag is shared contract-level state. It records that *a* valid proof occurred on this contract; it does **not** authenticate, identify, or certify the individual user or connected wallet viewing the state.
 - **Frontend Guidance**: Frontends must never present the contract's global `eligible: true` as proof about the connected wallet, nor use shared contract state as an access-control gate. Frontends should label the state as *"Contract Ledger Status: Valid Proof Recorded On-Chain"* and only display user-specific success within the ephemeral local proof flow.
+
+## Privacy Claim
+
+VeilPass provides strict cryptographic selective disclosure on Midnight. The boundary between what an external observer can verify on-chain and what remains strictly private to the user is defined as follows:
+
+### PUBLIC / observable:
+- Deployed contract address
+- Transaction metadata and transaction ID
+- `policy_threshold`
+- `eligible`
+- `threshold_used`
+- Evidence that the Compact circuit completed successfully
+
+### PRIVATE / not disclosed:
+- Exact age witness
+- Date of birth
+- Government identity
+- Identity documents
+- Temporary frontend input
+- Local proving material
+
+> [!NOTE]
+> The Compact circuit proves solely that the supplied private integer satisfies the public threshold (`privateAge >= threshold >= 18`). The current age is self-attested and does not prove that the age is truthful or issued by a trusted identity provider. Real-world identity verification requires integration with accredited credential issuers (the Level 3 vision).
 
 ## Tech Stack
 
@@ -201,6 +247,8 @@ VeilPass demonstrates zero-knowledge selective disclosure on Midnight:
 - **Docker & Proof Server (v8.1.0)**: Local zero-knowledge proof generation container.
 
 ## Run Tests
+
+The automated verification currently includes 8 Compact contract tests and 78 web regression tests.
 
 Execute the automated contract test suite:
 
@@ -218,11 +266,55 @@ The test suite runs against the compiled Compact JavaScript bytecode using `@mid
 7. **Configurable Threshold**: Caller proving 21+ (`age = 22 >= threshold = 21 >= policy 18`) succeeds with `threshold_used = 21`.
 8. **Privacy Inspection**: Verifies that the private age witness value (`42n`) does not appear in any public ledger field or circuit return value.
 
+Execute the web test suite, full TypeScript build, web bundle build, and code linting:
+
+```bash
+npm run test:web
+npm run build
+npm run build:web
+npm run lint
+```
+
+## CI/CD
+
+VeilPass uses GitHub Actions for continuous integration through `.github/workflows/ci.yml`. The workflow runs on every push and pull request and performs the following checks:
+
+1. Checks out the repository.
+2. Configures Node.js 22.
+3. Installs the root and web dependencies using `npm ci`.
+4. Installs Compact developer tools 0.5.2.
+5. Installs and selects Compact compiler 0.31.1.
+6. Compiles `contracts/veilpass.compact`.
+7. Verifies that the generated contract artifacts have not drifted from the committed versions.
+8. Runs the root TypeScript build.
+9. Runs the Compact contract tests.
+10. Builds the production web application.
+11. Runs the web regression tests.
+12. Runs ESLint with zero warnings allowed.
+
+View the passing workflow runs in [GitHub Actions](https://github.com/subhadip890/veilpass/actions).
+
+GitHub Actions provides continuous integration. Vercel provides continuous deployment for the production frontend when completed changes reach the `master` branch.
+
+## Product Proposal
+
+VeilPass uses the approved **Age / Eligibility Gate** idea from the provided Level 3 idea list.
+
+See the complete product proposal, Midnight-specific justification, selective-disclosure data model, limitations, and Mainnet feasibility plan in [PROPOSAL.md](PROPOSAL.md).
+
 ## Initial Idea
 
 VeilPass is envisioned as a universal, privacy-preserving age and eligibility gate for modern web applications, restricted online services, age-gated commerce, and decentralized communities. Rather than forcing users to upload sensitive identity documents, scans of passports, or credit cards to prove adulthood, VeilPass allows users to generate zero-knowledge proofs client-side that confirm they satisfy the required age or credential threshold without revealing any personal details. As the project evolves toward Level 3, VeilPass will integrate with decentralized identity (DID) standards and Verifiable Credentials, enabling seamless, privacy-preserving compliance for platforms while eliminating liability and centralized identity honeypots.
 
 ## Screenshots
+
+### Level 3 — Automated Tests Passing
+
+![VeilPass Level 3 automated tests passing](docs/level-3/tests-passing.png)
+
+### Level 3 — CI Pipeline Passing
+
+![VeilPass GitHub Actions CI pipeline passing](docs/level-3/ci-passing.png)
 
 ### Successful Compact Compilation
 
